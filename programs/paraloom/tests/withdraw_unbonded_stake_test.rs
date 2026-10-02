@@ -30,8 +30,9 @@ use solana_sdk::{
 mod common;
 use common::{
     add_program_data, add_stake_mint, entry, funded_validator, init_validator_registry_ix,
-    register_validator_ix, slash_validator_ix, withdraw_unbonded_ix,
+    register_validator_ix, slash_validator_ix, withdraw_unbonded_ix, TEST_TOKEN_FUND,
 };
+use anchor_lang::solana_program::program_pack::Pack;
 
 /// Token half of the dual-stake used across these tests (== MIN_TOKEN_STAKE).
 const TOKEN_STAKE: u64 = paraloom_program::RECOMMENDED_MIN_TOKEN_STAKE;
@@ -465,6 +466,14 @@ async fn deactivate_routes_stake_to_unbonding_then_withdraws() {
         acc.unbonding_amount, MIN_VALIDATOR_STAKE,
         "the full stake must be routed into unbonding, not stranded"
     );
+    assert_eq!(
+        acc.token_stake_amount, 0,
+        "active token stake zeroed on deactivate (#826)"
+    );
+    assert_eq!(
+        acc.token_unbonding_amount, TOKEN_STAKE,
+        "token stake must be routed into token unbonding, not stranded (#826)"
+    );
     assert!(
         acc.unbonding_slot >= UNBONDING_SLOTS,
         "unbonding_slot = deactivation-era slot + UNBONDING_SLOTS"
@@ -508,6 +517,18 @@ async fn deactivate_routes_stake_to_unbonding_then_withdraws() {
         wallet_after > wallet_before,
         "wallet credited by the released stake + refunded rent"
     );
+    let vt_raw = ctx
+        .banks_client
+        .get_account(validator_token)
+        .await
+        .unwrap()
+        .unwrap();
+    let vt_state = spl_token::state::Account::unpack(&vt_raw.data).unwrap();
+    assert_eq!(
+        vt_state.amount, TEST_TOKEN_FUND,
+        "validator token account must be refunded the unbonded token stake (#826)"
+    );
+
     let closed = ctx
         .banks_client
         .get_account(validator_pda)

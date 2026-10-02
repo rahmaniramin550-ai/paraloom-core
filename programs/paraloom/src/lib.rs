@@ -1647,6 +1647,13 @@ pub mod paraloom_program {
             v.unbonding_amount = v.unbonding_amount.saturating_add(stake);
             v.unbonding_slot = now_slot.saturating_add(UNBONDING_SLOTS);
             v.stake_amount = 0;
+            // The token half unbonds in lockstep with the SOL half (#826):
+            // route token_stake_amount into token_unbonding_amount so it is
+            // reclaimable via withdraw_unbonded_stake instead of being frozen
+            // in the vault when the PDA closes.
+            let token_stake = v.token_stake_amount;
+            v.token_stake_amount = 0;
+            v.token_unbonding_amount = v.token_unbonding_amount.saturating_add(token_stake);
             let registry = &mut ctx.accounts.validator_registry;
             registry.total_active_stake = registry.total_active_stake.saturating_sub(stake);
             registry.active_validators = registry.active_validators.saturating_sub(1);
