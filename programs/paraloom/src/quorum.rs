@@ -86,6 +86,12 @@ pub fn verify_validator_quorum(
         if !validator.is_active || validator.validator != *wallet.key {
             continue;
         }
+        // Dual-stake: a validator whose token collateral is below the registry
+        // minimum (governance raise, slashing, or registered under a lower
+        // minimum) must not count toward settlement quorum.
+        if validator.token_stake_amount < registry.min_token_stake {
+            continue;
+        }
         // Count each validator at most once.
         if seen.contains(wallet.key) {
             continue;
@@ -371,6 +377,23 @@ mod tests {
         let si = AccountInfo::new(&ind, true, false, &mut li, &mut ei, &sys, false, 0);
         let ai = AccountInfo::new(&pda_ind, false, false, &mut lpi, &mut d_ind, &p, false, 0);
         assert!(verify_validator_quorum(&p, &registry(2), &auth, 1_000_000_000, &[si, ai]).is_ok());
+    }
+
+    #[test]
+    fn validator_below_min_token_stake_is_not_counted() {
+        let p = prog();
+        let sys = anchor_lang::solana_program::system_program::ID;
+        let w = Pubkey::new_unique();
+        let (pda, _) = Pubkey::find_program_address(&[b"validator", w.as_ref()], &p);
+        // token_stake_amount is 0 in the fixture; registry demands 100.
+        let mut d = validator_data(w, true);
+        let (mut l, mut lp) = (0u64, 0u64);
+        let mut e = [0u8; 0];
+        let s = AccountInfo::new(&w, true, false, &mut l, &mut e, &sys, false, 0);
+        let a = AccountInfo::new(&pda, false, false, &mut lp, &mut d, &p, false, 0);
+        let mut reg = registry(1);
+        reg.min_token_stake = 100;
+        assert!(verify_validator_quorum(&p, &reg, &Pubkey::default(), 0, &[s, a]).is_err());
     }
 
     #[test]
