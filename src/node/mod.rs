@@ -1024,6 +1024,7 @@ async fn cosign_settlement(
             SettlementParams::TransactSpl {
                 recipient_token_account,
                 mint,
+                token_program,
                 nullifiers,
                 output_commitments,
                 root,
@@ -1035,6 +1036,7 @@ async fn cosign_settlement(
             let approved = cache.get(&request.request_id).is_some_and(|req| {
                 req.recipient == *recipient_token_account
                     && req.mint == Some(*mint)
+                    && req.token_program == *token_program
                     && req.nullifiers == *nullifiers
                     && req.output_commitments == *output_commitments
                     && req.root == *root
@@ -2458,6 +2460,7 @@ impl Node {
             Some(mint) => SettlementParams::TransactSpl {
                 recipient_token_account: request.recipient,
                 mint,
+                token_program: request.token_program,
                 nullifiers: request.nullifiers,
                 output_commitments: request.output_commitments,
                 root: request.root,
