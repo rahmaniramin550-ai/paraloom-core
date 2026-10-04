@@ -1093,6 +1093,14 @@ pub mod paraloom_program {
         let token_slash = (old_token as u128 * slash_percentage as u128 / 100) as u64;
         validator_account.times_slashed = validator_account.times_slashed.saturating_add(1);
 
+        // Forfeit pending rewards in the same proportion as the slash penalty (#863).
+        // Slashing reduces both active stake and earned settlement fees so that
+        // a misbehaving validator cannot extract rewards accumulated prior to slashing.
+        let reward_slash =
+            (validator_account.pending_rewards as u128 * slash_percentage as u128 / 100) as u64;
+        validator_account.pending_rewards =
+            validator_account.pending_rewards.saturating_sub(reward_slash);
+
         if was_active {
             validator_account.stake_amount = old_stake.saturating_sub(slash_amount);
             validator_account.token_stake_amount = old_token.saturating_sub(token_slash);
@@ -1102,6 +1110,8 @@ pub mod paraloom_program {
             // toward the BFT quorum.
             if validator_account.stake_amount < ctx.accounts.validator_registry.minimum_stake {
                 validator_account.is_active = false;
+                // An ejected validator forfeits all remaining pending rewards entirely (#863).
+                validator_account.pending_rewards = 0;
                 let registry = &mut ctx.accounts.validator_registry;
                 registry.active_validators = registry.active_validators.saturating_sub(1);
                 registry.total_active_stake = registry.total_active_stake.saturating_sub(old_stake);
@@ -1135,6 +1145,10 @@ pub mod paraloom_program {
             validator_account.token_unbonding_amount = validator_account
                 .token_unbonding_amount
                 .saturating_sub(token_slash);
+            // If slashed 100% while unbonding, any residual pending rewards are completely wiped out (#863).
+            if slash_percentage == 100 {
+                validator_account.pending_rewards = 0;
+            }
         }
 
         // Move the slashed SOL to the dead-end slashed-funds vault, NOT the
